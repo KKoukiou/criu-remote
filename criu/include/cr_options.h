@@ -101,6 +101,9 @@ struct cr_options {
 	bool			enable_external_masters;
 	bool			aufs;		/* auto-deteced, not via cli */
 	bool			overlayfs;
+	bool			remote;
+	char			*local_cache_path;
+	char			*local_proxy_path;
 	size_t			ghost_limit;
 	struct list_head	irmap_scan_paths;
 	bool			lsm_supplied;

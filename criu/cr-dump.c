@@ -83,6 +83,8 @@
 
 #include "asm/dump.h"
 
+#include "img-remote.h"
+
 static char loc_buf[PAGE_SIZE];
 
 void free_mappings(struct vm_area_list *vma_area_list)
@@ -1470,6 +1472,11 @@ int cr_pre_dump_tasks(pid_t pid)
 	int ret = -1;
 	LIST_HEAD(ctls);
 
+    if (opts.remote && push_snapshot_id() < 0) {
+        pr_err("Failed to push image namespace.\n");
+        goto err;
+    }
+
 	if (!opts.track_mem) {
 		pr_info("Enforcing memory tracking for pre-dump.\n");
 		opts.track_mem = true;
@@ -1594,6 +1601,9 @@ static int cr_dump_finish(int ret)
 
 	close_service_fd(CR_PROC_FD_OFF);
 
+    if (opts.remote)
+        finish_remote_dump();
+
 	if (ret) {
 		pr_err("Dumping FAILED.\n");
 	} else {
@@ -1613,6 +1623,11 @@ int cr_dump_tasks(pid_t pid)
 	pr_info("========================================\n");
 	pr_info("Dumping processes (pid: %d)\n", pid);
 	pr_info("========================================\n");
+
+    if (opts.remote && push_snapshot_id() < 0) {
+        pr_err("Failed to push image namepsace.\n");
+        goto err;
+    }
 
 	pre_dump_ret = run_scripts(ACT_PRE_DUMP);
 	if (pre_dump_ret != 0) {

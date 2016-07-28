@@ -59,6 +59,7 @@ proto-obj-y	+= seccomp.o
 proto-obj-y	+= binfmt-misc.o
 proto-obj-y	+= time.o
 proto-obj-y	+= sysctl.o
+proto-obj-y	+= remote-image.o
 
 CFLAGS		+= -iquote $(obj)/
 

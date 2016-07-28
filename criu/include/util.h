@@ -278,6 +278,8 @@ int setup_tcp_server(char *type);
 int run_tcp_server(bool daemon_mode, int *ask, int cfd, int sk);
 int setup_tcp_client(char *addr);
 
+size_t read_into_buffer(int fd, char *buff, size_t size);
+
 #define LAST_PID_PATH		"sys/kernel/ns_last_pid"
 
 #endif /* __CR_UTIL_H__ */

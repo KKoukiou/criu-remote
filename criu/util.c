@@ -1178,3 +1178,18 @@ int setup_tcp_client(char *addr)
 
 	return sk;
 }
+
+size_t read_into_buffer(int fd, char *buff, size_t size)
+{
+	size_t n = 0;
+	size_t curr = 0;
+
+	while (1) {
+		n  = read(fd, buff + curr, size - curr);
+		if (n < 1)
+			return n;
+		curr += n;
+		if (curr == size)
+			return size;
+	}
+}

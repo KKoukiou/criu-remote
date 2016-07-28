@@ -48,6 +48,8 @@
 #include "setproctitle.h"
 #include "sysctl.h"
 
+#include "img-remote.h"
+
 struct cr_options opts;
 
 void init_opts(void)
@@ -68,6 +70,10 @@ void init_opts(void)
 	opts.cpu_cap = CPU_CAP_DEFAULT;
 	opts.manage_cgroups = CG_MODE_DEFAULT;
 	opts.ps_socket = -1;
+	opts.addr = DEFAULT_CACHE_HOST;
+	opts.port = DEFAULT_CACHE_PORT;
+	opts.local_cache_path = DEFAULT_IMG_PATH;
+	opts.local_proxy_path = DEFAULT_IMG_PATH;
 	opts.ghost_limit = DEFAULT_GHOST_LIMIT;
 	opts.timeout = DEFAULT_TIMEOUT;
 	opts.empty_ns = 0;
@@ -275,6 +281,9 @@ int main(int argc, char *argv[], char *envp[])
 		{ "extra",			no_argument,		0, 1077	},
 		{ "experimental",		no_argument,		0, 1078	},
 		{ "all",			no_argument,		0, 1079	},
+		{ "remote",			no_argument,		0, 1080 },
+		{ "local-cache-path",		required_argument,	0, 1081 },
+		{ "local-proxy-path",		required_argument,	0, 1082 },
 		{ },
 	};
 
@@ -569,6 +578,15 @@ int main(int argc, char *argv[], char *envp[])
 			opts.check_extra_features = true;
 			opts.check_experimental_features = true;
 			break;
+		case 1080:
+			opts.remote = true;
+			break;
+		case 1081:
+			opts.local_cache_path = optarg;
+			break;
+		case 1082:
+			opts.local_proxy_path = optarg;
+			break;
 		case 'V':
 			pr_msg("Version: %s\n", CRIU_VERSION);
 			if (strcmp(CRIU_GITID, "0"))
@@ -709,6 +727,12 @@ int main(int argc, char *argv[], char *envp[])
 	if (!strcmp(argv[optind], "page-server"))
 		return cr_page_server(opts.daemon_mode, -1) > 0 ? 0 : 1;
 
+	if (!strcmp(argv[optind], "image-cache"))
+		return image_cache(opts.local_cache_path, opts.port) > 0 ? 0 : 1;
+
+	if (!strcmp(argv[optind], "image-proxy"))
+		return image_proxy(opts.local_proxy_path, opts.addr, opts.port) > 0 ? 0 : 1;
+
 	if (!strcmp(argv[optind], "service"))
 		return cr_service(opts.daemon_mode);
 
@@ -735,6 +759,8 @@ usage:
 "  criu page-server\n"
 "  criu service [<options>]\n"
 "  criu dedup\n"
+"  criu image-cache [<options>]\n"
+"  criu image-proxy [<options>]\n"
 "\n"
 "Commands:\n"
 "  dump           checkpoint a process/tree identified by pid\n"
@@ -747,6 +773,8 @@ usage:
 "  dedup          remove duplicates in memory dump\n"
 "  cpuinfo dump   writes cpu information into image file\n"
 "  cpuinfo check  validates cpu information read from image file\n"
+"  image-cache	  launch destination-side cache for images\n"
+"  image_proxy	  launch source-side proxy to send images to the destination node\n"
 	);
 
 	if (usage_error) {
@@ -773,6 +801,7 @@ usage:
 "                        restore making it the parent of the restored process\n"
 "  --freeze-cgroup\n"
 "                        use cgroup freezer to collect processes\n"
+"  --remote              dump/restore images directly to/from remote node using image-proxy/image-cache\n"
 "\n"
 "* Special resources support:\n"
 "  -x|--" USK_EXT_PARAM "inode,.." "      allow external unix connections (optionally can be assign socket's inode that allows one-sided dump)\n"
@@ -868,7 +897,7 @@ usage:
 "\n"
 "Page/Service server options:\n"
 "  --address ADDR        address of server or service\n"
-"  --port PORT           port of page server\n"
+"  --port PORT           port of server or service\n"
 "  -d|--daemon           run in the background after creating socket\n"
 "\n"
 "Other options:\n"

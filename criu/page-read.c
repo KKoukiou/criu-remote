@@ -6,9 +6,12 @@
 #include "cr_options.h"
 #include "servicefd.h"
 #include "page-read.h"
+#include "util.h"
 
 #include "protobuf.h"
 #include "images/pagemap.pb-c.h"
+
+#include "img-remote.h"
 
 #ifndef SEEK_DATA
 #define SEEK_DATA	3
@@ -92,7 +95,10 @@ static void skip_pagemap_pages(struct page_read *pr, unsigned long len)
 		return;
 
 	pr_debug("\tpr%u Skip %lu bytes from page-dump\n", pr->id, len);
-	if (!pr->pe->in_parent)
+	if (!pr->pe->in_parent && opts.remote) {
+		if (skip_remote_bytes(img_raw_fd(pr->pi), len) < 0)
+ 			pr_perror("Unable to skip remote bytes");
+	} else if (!pr->pe->in_parent)
 		lseek(img_raw_fd(pr->pi), len, SEEK_CUR);
 	pr->cvaddr += len;
 }
@@ -195,10 +201,12 @@ static int read_pagemap_page(struct page_read *pr, unsigned long vaddr, int nr, 
 		} while (nr);
 	} else {
 		int fd = img_raw_fd(pr->pi);
-		off_t current_vaddr = lseek(fd, 0, SEEK_CUR);
 
+		/* TODO - lseek is not possible to sockets. Need to find a solution. */
+		off_t current_vaddr = opts.remote ? 0 : lseek(fd, 0, SEEK_CUR);
 		pr_debug("\tpr%u Read page from self %lx/%"PRIx64"\n", pr->id, pr->cvaddr, current_vaddr);
-		ret = read(fd, buf, len);
+
+		ret = read_into_buffer(fd, buf, len);
 		if (ret != len) {
 			pr_perror("Can't read mapping page %d", ret);
 			return -1;
@@ -244,9 +252,24 @@ static int try_open_parent(int dfd, int pid, struct page_read *pr, int pr_flags)
 	int pfd, ret;
 	struct page_read *parent = NULL;
 
-	pfd = openat(dfd, CR_PARENT_LINK, O_RDONLY);
-	if (pfd < 0 && errno == ENOENT)
-		goto out;
+	if (opts.remote) {
+	/* Note: we are replacing a real directory FD for a snapshot_id
+	 * index. Since we need the parent of the current snapshot_id,
+	 * we want the current snapshot_id index minus one. It is
+	 * possible that dfd is already a snapshot_id index. We test it
+	 * by comparing it to the service FD. When opening an image (see
+	 * do_open_image) we convert the snapshot_id index into a real
+	 * snapshot_id.
+	 */
+		pfd = dfd == get_service_fd(IMG_FD_OFF) ?
+		get_curr_snapshot_id_idx() - 1 : dfd - 1;
+		if (pfd < 0)
+			goto out;
+	} else {
+		pfd = openat(dfd, CR_PARENT_LINK, O_RDONLY);
+		if (pfd < 0 && errno == ENOENT)
+			goto out;
+	}
 
 	parent = xmalloc(sizeof(*parent));
 	if (!parent)
@@ -261,7 +284,8 @@ static int try_open_parent(int dfd, int pid, struct page_read *pr, int pr_flags)
 		parent = NULL;
 	}
 
-	close(pfd);
+	if (!opts.remote)
+		close(pfd);
 out:
 	pr->parent = parent;
 	return 0;
@@ -269,7 +293,8 @@ out:
 err_free:
 	xfree(parent);
 err_cl:
-	close(pfd);
+	if (!opts.remote)
+		close(pfd);
 	return -1;
 }
 

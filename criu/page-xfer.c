@@ -16,6 +16,7 @@
 #include "util.h"
 #include "protobuf.h"
 #include "images/pagemap.pb-c.h"
+#include "img-remote.h"
 
 struct page_server_iov {
 	u32	cmd;
@@ -670,12 +671,20 @@ static int open_page_local_xfer(struct page_xfer *xfer, int fd_type, long id)
 		int ret;
 		int pfd;
 
-		pfd = openat(get_service_fd(IMG_FD_OFF), CR_PARENT_LINK, O_RDONLY);
-		if (pfd < 0 && errno == ENOENT)
-			goto out;
+		if (opts.remote) {
+			pfd = get_curr_parent_snapshot_id_idx();
+			if (pfd == -1)
+				goto out;
+		} else {
+			pfd = openat(get_service_fd(IMG_FD_OFF), CR_PARENT_LINK, O_RDONLY);
+			if (pfd < 0 && errno == ENOENT)
+				goto out;
+		}
 
 		xfer->parent = xmalloc(sizeof(*xfer->parent));
-		if (!xfer->parent) {
+		if (!xfer->parent && opts.remote) {
+			return -1;
+		} else if (!xfer->parent) {
 			close(pfd);
 			return -1;
 		}
@@ -685,10 +694,12 @@ static int open_page_local_xfer(struct page_xfer *xfer, int fd_type, long id)
 			pr_perror("No parent image found, though parent directory is set");
 			xfree(xfer->parent);
 			xfer->parent = NULL;
-			close(pfd);
+			if (!opts.remote)
+				close(pfd);
 			goto out;
 		}
-		close(pfd);
+		if (!opts.remote)
+			close(pfd);
 	}
 
 out:
@@ -782,6 +793,8 @@ int check_parent_page_xfer(int fd_type, long id)
 {
 	if (opts.use_page_server)
 		return check_parent_server_xfer(fd_type, id);
+	else if (opts.remote)
+		return get_curr_parent_snapshot_id_idx() == -1 ? 0 : 1;
 	else
 		return check_parent_local_xfer(fd_type, id);
 }
