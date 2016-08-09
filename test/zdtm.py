@@ -757,6 +757,7 @@ class criu:
 		self.__prev_dump_iter = None
 		self.__page_server = (opts['page_server'] and True or False)
 		self.__lazy_pages = (opts['lazy_pages'] and True or False)
+                self.__remote = (opts['remote'] and True or False)
 		self.__restore_sibling = (opts['sibling'] and True or False)
 		self.__join_ns = (opts['join_ns'] and True or False)
 		self.__unshare = (opts['unshare'] and True or False)
@@ -876,6 +877,32 @@ class criu:
 
 		a_opts += self.__test.getdopts()
 
+		if self.__remote:
+			from subprocess import check_output
+			os.system("killall -9 criu")
+
+			logdir = os.getcwd() + "/" + self.__dump_path + "/" + str(self.__iter)
+			print "Adding image cache"
+
+			cache_opts = [criu_bin, "image-cache", "--port", "12345", "-v4", "-o",
+				      logdir + "/image-cache.log", "-D", logdir]
+
+			cpid = subprocess.Popen(cache_opts).pid
+			time.sleep(1)
+
+			print "Adding image proxy"
+
+			proxy_opts = [criu_bin, "image-proxy", "--port", "12345", "--address",
+				      "localhost", "-v4", "-o", logdir + "/image-proxy.log",
+                                      "-D", logdir]
+
+			ppid = subprocess.Popen(proxy_opts).pid
+			time.sleep(1)
+
+			a_opts += ["--remote"]
+
+		a_opts += self.__test.getdopts()
+
 		if self.__dedup:
 			a_opts += ["--auto-dedup"]
 
@@ -902,6 +929,8 @@ class criu:
 
 	def restore(self):
 		r_opts = []
+		logdir = os.getcwd() + "/" + self.__dump_path + "/" + str(self.__iter)
+
 		if self.__restore_sibling:
 			r_opts = ["--restore-sibling"]
 			self.__test.auto_reap = False
@@ -912,6 +941,9 @@ class criu:
 		if self.__unshare:
 			r_opts.append("--unshare")
 			r_opts.append("pid,mnt,proc")
+
+		if self.__remote:
+			r_opts += ["--remote"]
 
 		self.__prev_dump_iter = None
 		criu_dir = os.path.dirname(os.getcwd())
@@ -1360,7 +1392,7 @@ class launcher:
 		nd = ('nocr', 'norst', 'pre', 'iters', 'page_server', 'sibling', 'unshare',
 				'fault', 'keep_img', 'report', 'snaps', 'sat', 'script', 'stop',
 				'join_ns', 'dedup', 'sbs', 'freezecg', 'user', 'dry_run', 'rpc',
-				'lazy_pages', 'noauto_dedup')
+				'lazy_pages', 'noauto_dedup', 'remote')
 		arg = repr((name, desc, flavor, {d: self.__opts[d] for d in nd}))
 
 		if self.__use_log:
@@ -1606,6 +1638,8 @@ def run_tests(opts):
 				run_flavs -= set(['ns', 'uns'])
 			if opts['unshare']:
 				run_flavs -= set(['ns', 'uns'])
+                        if opts['remote']:
+                                run_flavs -= set(['ns', 'uns'])
 
 			if run_flavs:
 				l.run_test(t, tdesc, run_flavs)
@@ -1814,6 +1848,7 @@ rp.add_argument("--user", help = "Run CRIU as regular user", action = 'store_tru
 rp.add_argument("--rpc", help = "Run CRIU via RPC rather than CLI", action = 'store_true')
 
 rp.add_argument("--page-server", help = "Use page server dump", action = 'store_true')
+rp.add_argument("--remote", help = "Use remote option for diskless C/R", action = 'store_true')
 rp.add_argument("-p", "--parallel", help = "Run test in parallel")
 rp.add_argument("--dry-run", help="Don't run tests, just pretend to", action='store_true')
 rp.add_argument("--script", help="Add script to get notified by criu")
