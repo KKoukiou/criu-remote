@@ -268,12 +268,18 @@ static int read_pagemap_page(struct page_read *pr, unsigned long vaddr, int nr, 
 	} else {
 		int fd = img_raw_fd(pr->pi);
 		off_t current_vaddr = lseek(fd, pr->pi_off, SEEK_SET);
+		size_t curr = 0;
 
 		pr_debug("\tpr%u Read page from self %lx/%"PRIx64"\n", pr->id, pr->cvaddr, current_vaddr);
-		ret = read(fd, buf, len);
-		if (ret != len) {
-			pr_perror("Can't read mapping page %d", ret);
-			return -1;
+		while (1) {
+			ret = read(fd, buf + curr, len - curr);
+			if (ret < 1) {
+				pr_perror("Can't read mapping page %d", ret);
+				return -1;
+			}
+			curr += ret;
+			if (curr == len)
+				break;
 		}
 
 		pr->pi_off += len;
